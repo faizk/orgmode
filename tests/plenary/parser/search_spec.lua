@@ -1,4 +1,6 @@
 local Search = require('orgmode.files.elements.search')
+local Date = require('orgmode.objects.date')
+
 
 describe('Search parser', function()
   it('should parse search term and check value value', function()
@@ -151,6 +153,69 @@ describe('Search parser', function()
       props = { pages = 1010, items = 100, count = 10, calculation = 8, books = 5 },
       tags = { 'OFFICE' },
     }))
+  end)
+
+
+  it('should parse search term and match number properties and value in a boolean AND', function()
+    local result = Search:new('ITEMS<500&ITEMS>400')
+    assert.is.True(result:check({ props = { items = 450 } }))
+    assert.is.False(result:check({ props = { items = 350 } }))
+    assert.is.False(result:check({ props = { items = 550 } }))
+    result = Search:new('ITEMS>400&ITEMS<500')
+    assert.is.True(result:check({ props = { items = 450 } }))
+    assert.is.False(result:check({ props = { items = 350 } }))
+    assert.is.False(result:check({ props = { items = 550 } }))
+  end)
+
+  describe('Timestamp Searches', function ()
+
+    local function todayStr(adjustment)
+      local d = Date.today()
+      if adjustment then d = d:adjust(adjustment) end
+      return d:to_wrapped_string(true)
+    end
+
+    local function check(query, item)
+      return Search:new(query):check(item)
+    end
+
+    local function itemScheduled(adjustment)
+      return { props = { scheduled = todayStr(adjustment) } }
+    end
+
+    local function assertMatches(query, item)
+      return assert.is.True(check(query, item))
+    end
+
+    local function assertNoMatch(query, item)
+      return assert.is.False(check(query, item))
+    end
+
+    it('should parse search term and match date properties and value', function()
+      assertNoMatch('SCHEDULED<"<-2d>"', itemScheduled())
+      assertNoMatch('SCHEDULED<"<-2d>"', itemScheduled("-1d"))
+      assertMatches('SCHEDULED<"<-2d>"', itemScheduled("-4d"))
+      assertMatches('SCHEDULED>"<-2d>"', itemScheduled())
+      assertMatches('SCHEDULED>"<-2d>"', itemScheduled("-1d"))
+      assertNoMatch('SCHEDULED>"<-2d>"', itemScheduled("-3d"))
+      assertMatches('SCHEDULED<"<+3d>"', itemScheduled())
+      assertMatches('SCHEDULED<"<+3d>"', itemScheduled("-1d"))
+      assertNoMatch('SCHEDULED<"<+3d>"', itemScheduled("+4d"))
+      assertMatches('SCHEDULED<="<+3d>"', itemScheduled("+3d"))
+    end)
+
+    it('should parse search term and match date properties and value in a boolean AND', function()
+      assertMatches('SCHEDULED>"<-2d>"&SCHEDULED<"<+2d>"', itemScheduled())
+      assertMatches('SCHEDULED<"<+2d>"&SCHEDULED>"<-2d>"', itemScheduled())
+
+      assertNoMatch('SCHEDULED>"<-2d>"&SCHEDULED<"<+2d>"', itemScheduled("-4d"))
+      assertNoMatch('SCHEDULED<"<+2d>"&SCHEDULED>"<-2d>"', itemScheduled("-4d")) -- FIXME
+
+      assertMatches('SCHEDULED>"<-2d>"&SCHEDULED<"<+2d>"', itemScheduled("+1d"))
+      assertNoMatch('SCHEDULED>"<-2d>"&SCHEDULED<"<+2d>"', itemScheduled("+4d")) -- FIXME
+      assertNoMatch('SCHEDULED<"<+2d>"$SCHEDULED>"<-2d>"', itemScheduled("+4d"))
+    end)
+
   end)
 
   it('should search props, tags and todo keywords', function()
